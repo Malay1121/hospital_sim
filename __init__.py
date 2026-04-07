@@ -6,8 +6,8 @@
 
 """My Env Environment."""
 
-from .client import MyEnv
-from .models import MyAction, MyObservation
+from ..client import MyEnv
+from ..models import MyAction, MyObservation
 
 __all__ = [
     "MyAction",
