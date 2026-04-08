@@ -53,15 +53,13 @@ def _pick_hard_action(snapshot: dict) -> tuple[str, dict]:
         return "help", {}
 
     patient_id = sorted(casualties.keys())[0]
-    injury = int(casualties[patient_id].get("injury_score", 0) or 0)
+    injury = float(casualties[patient_id].get("injury_score", 0) or 0)
     if injury >= 8:
         label = "red"
-    elif injury >= 6:
+    elif injury >= 5:
         label = "yellow"
-    elif injury >= 4:
-        label = "green"
     else:
-        label = "black"
+        label = "green"
     return "triage", {"patient_id": patient_id, "label": label}
 
 

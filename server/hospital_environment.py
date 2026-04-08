@@ -5,12 +5,14 @@ Implements three tasks with increasing difficulty:
 - medium: schedule nurse coverage across a week (labor rules)
 - hard: mass casualty event (triage + reallocation + call-ins)
 
-The environment is deterministic: the same actions lead to the same score.
+Each episode is seeded: pass seed= to reset() for reproducibility,
+or omit it for a randomly generated scenario every time.
 """
 
 from __future__ import annotations
 
 import os
+import random
 from uuid import uuid4
 
 from openenv.core.env_server.interfaces import Environment
@@ -23,21 +25,48 @@ except ImportError:  # When running as a top-level module (uvicorn server.app:ap
     from models import HospitalAction, HospitalObservation, HospitalState
 
 
+# Symptom pool for hard-task casualties (descriptive, not numeric)
+_SYMPTOMS = [
+    "unconscious, low BP",
+    "fracture, bleeding controlled",
+    "chest pain, stable vitals",
+    "minor lacerations",
+    "respiratory distress",
+    "burns, moderate pain",
+    "head trauma, disoriented",
+    "internal bleeding suspected",
+    "hypovolemic shock",
+    "stable, walking wounded",
+    "severe crush injury",
+    "smoke inhalation",
+]
+
+
 class HospitalSchedulerEnvironment(Environment):
-    """Hospital Scheduler environment with 3 tasks and deterministic graders."""
+    """Hospital Scheduler environment with 3 tasks and deterministic graders.
+
+    Each episode is randomly generated from a seed so the agent cannot
+    memorise a fixed scenario. Pass seed= to reset() to reproduce a
+    specific episode.
+    """
 
     SUPPORTS_CONCURRENT_SESSIONS: bool = True
 
     def __init__(self):
-        self._state = self._build_state(task=os.getenv("HOSPITAL_TASK", "easy"))
+        self._state = self._build_state(
+            task=os.getenv("HOSPITAL_TASK", "easy"), seed=None
+        )
 
-    def reset(self) -> HospitalObservation:
+    def reset(self, seed=None, episode_id=None, **kwargs) -> HospitalObservation:
         task = os.getenv("HOSPITAL_TASK", self._state.task)
-        self._state = self._build_state(task=task)
+        self._state = self._build_state(task=task, seed=seed)
         self._state.score = grade(self._state)
 
         return self._observation(
-            message=f"Hospital Scheduler ready (task={self._state.task}).",
+            message=(
+                f"Hospital Scheduler ready (task={self._state.task}, "
+                f"seed={self._state.seed})."
+            ),
             violations=[],
             done=False,
             reward=0.0,
@@ -47,7 +76,6 @@ class HospitalSchedulerEnvironment(Environment):
         prev_score = float(self._state.score)
         self._state.last_action_error = None
 
-        # If episode already reached max steps, freeze and return.
         if self._state.step_count >= self._state.max_steps:
             return self._observation(
                 message="Episode step limit reached.",
@@ -62,7 +90,6 @@ class HospitalSchedulerEnvironment(Environment):
         violations: list[str] = []
         message = ""
 
-        # Count step for all commands except 'help' and 'status'
         if cmd not in {"help", "status"}:
             self._state.step_count += 1
 
@@ -73,7 +100,6 @@ class HospitalSchedulerEnvironment(Environment):
         elif cmd == "finalize":
             message = "Finalizing episode."
         else:
-            # Task-specific commands
             if self._state.task == "easy":
                 message, violations = self._step_easy(cmd, params)
             elif self._state.task == "medium":
@@ -87,10 +113,7 @@ class HospitalSchedulerEnvironment(Environment):
         if violations:
             self._state.last_action_error = "; ".join(violations)
 
-        # Recompute score deterministically.
         self._state.score = grade(self._state)
-
-        # Dense reward = delta score + small time penalty.
         reward = (self._state.score - prev_score) - 0.01
 
         done = False
@@ -116,27 +139,33 @@ class HospitalSchedulerEnvironment(Environment):
     # Task initialization
     # -----------------
 
-    def _build_state(self, task: str) -> HospitalState:
+    def _build_state(self, task: str, seed=None) -> HospitalState:
         task = (task or "easy").strip().lower()
         if task not in {"easy", "medium", "hard"}:
             task = "easy"
+
+        # Resolve seed: use provided seed or generate a random one.
+        # Storing it in state makes every episode fully reproducible.
+        resolved_seed = seed if seed is not None else random.randint(0, 2**31 - 1)
+        rng = random.Random(resolved_seed)
 
         base = HospitalState(
             episode_id=str(uuid4()),
             step_count=0,
             task=task,
+            seed=resolved_seed,
             max_steps={"easy": 40, "medium": 80, "hard": 120}[task],
             score=0.0,
             last_action_error=None,
         )
 
         if task == "easy":
-            return self._init_easy(base)
+            return self._init_easy(base, rng)
         if task == "medium":
-            return self._init_medium(base)
-        return self._init_hard(base)
+            return self._init_medium(base, rng)
+        return self._init_hard(base, rng)
 
-    def _init_easy(self, state: HospitalState) -> HospitalState:
+    def _init_easy(self, state: HospitalState, rng: random.Random) -> HospitalState:
         state.wards = {
             "A": {"name": "Ward A"},
             "B": {"name": "Ward B"},
@@ -148,18 +177,18 @@ class HospitalSchedulerEnvironment(Environment):
             **{f"C{i}": {"ward": "C"} for i in range(1, 5)},
         }
 
-        # 10 patients, each with a required ward. Deterministic.
+        # Randomly assign patients to wards, capped at 4 per ward (bed capacity).
+        # Shuffle 12 available ward slots and take the first 10.
+        ward_pool = ["A"] * 4 + ["B"] * 4 + ["C"] * 4
+        rng.shuffle(ward_pool)
+        assigned_wards = ward_pool[:10]
+
         state.patients = {
-            "P1": {"required_ward": "A", "acuity": 2},
-            "P2": {"required_ward": "A", "acuity": 1},
-            "P3": {"required_ward": "A", "acuity": 3},
-            "P4": {"required_ward": "B", "acuity": 2},
-            "P5": {"required_ward": "B", "acuity": 1},
-            "P6": {"required_ward": "B", "acuity": 2},
-            "P7": {"required_ward": "C", "acuity": 1},
-            "P8": {"required_ward": "C", "acuity": 2},
-            "P9": {"required_ward": "C", "acuity": 3},
-            "P10": {"required_ward": "A", "acuity": 1},
+            f"P{i + 1}": {
+                "required_ward": ward,
+                "acuity": rng.randint(1, 3),
+            }
+            for i, ward in enumerate(assigned_wards)
         }
 
         state.bed_assignments = {}
@@ -171,22 +200,35 @@ class HospitalSchedulerEnvironment(Environment):
         state.nurse_ward_assignments = {}
         return state
 
-    def _init_medium(self, state: HospitalState) -> HospitalState:
-        # 3 wards with daily demand across 7 days. Demand is stable and deterministic.
+    def _init_medium(self, state: HospitalState, rng: random.Random) -> HospitalState:
+        # Randomly generate daily nurse demand per ward.
+        # Each ward needs 1–2 nurses per day.
+        # Total demand is capped at 35 so 8 nurses × 5 max shifts = 40 always covers it.
+        def _make_demand() -> list[int]:
+            return [rng.randint(1, 2) for _ in range(7)]
+
+        demands = {w: _make_demand() for w in ["A", "B", "C"]}
+
+        # Reduce demand if total would be too tight (> 35).
+        while sum(sum(d) for d in demands.values()) > 35:
+            ward = rng.choice(["A", "B", "C"])
+            day = rng.randint(0, 6)
+            if demands[ward][day] > 1:
+                demands[ward][day] -= 1
+
         state.wards = {
-            "A": {"name": "Ward A", "demand": [1, 2, 2, 1, 2, 1, 1]},
-            "B": {"name": "Ward B", "demand": [2, 2, 1, 2, 2, 1, 2]},
-            "C": {"name": "Ward C", "demand": [1, 1, 2, 2, 1, 2, 1]},
+            "A": {"name": "Ward A", "demand": demands["A"]},
+            "B": {"name": "Ward B", "demand": demands["B"]},
+            "C": {"name": "Ward C", "demand": demands["C"]},
         }
 
-        state.nurses = {
-            **{f"N{i}": {"name": f"Nurse {i}"} for i in range(1, 9)}
+        # Randomly pick 8–10 nurses for variety.
+        n_nurses = rng.randint(8, 10)
+        state.nurses = {f"N{i}": {"name": f"Nurse {i}"} for i in range(1, n_nurses + 1)}
+        state.shift_assignments = {
+            str(day): {"A": [], "B": [], "C": []} for day in range(7)
         }
 
-        # Start with empty assignments.
-        state.shift_assignments = {str(day): {"A": [], "B": [], "C": []} for day in range(7)}
-
-        # Not used in this task but kept for consistent state schema.
         state.patients = {}
         state.beds = {}
         state.bed_assignments = {}
@@ -196,40 +238,54 @@ class HospitalSchedulerEnvironment(Environment):
         state.nurse_ward_assignments = {}
         return state
 
-    def _init_hard(self, state: HospitalState) -> HospitalState:
+    def _init_hard(self, state: HospitalState, rng: random.Random) -> HospitalState:
         state.wards = {
             "ED": {"name": "Emergency"},
             "ICU": {"name": "ICU"},
             "GEN": {"name": "General"},
         }
-
         state.beds = {
             **{f"ED{i}": {"ward": "ED"} for i in range(1, 5)},
             **{f"ICU{i}": {"ward": "ICU"} for i in range(1, 5)},
             **{f"G{i}": {"ward": "GEN"} for i in range(1, 7)},
         }
 
-        # Existing patients (already occupying some beds)
+        # Existing patients: random acuity, fixed ward requirements.
+        existing_configs = [
+            ("GEN", rng.randint(1, 2)),
+            ("GEN", rng.randint(1, 2)),
+            ("ICU", rng.randint(2, 3)),
+            ("ICU", rng.randint(2, 3)),
+        ]
         existing = {
-            "E1": {"is_casualty": False, "acuity": 1, "required_ward": "GEN"},
-            "E2": {"is_casualty": False, "acuity": 2, "required_ward": "GEN"},
-            "E3": {"is_casualty": False, "acuity": 2, "required_ward": "ICU"},
-            "E4": {"is_casualty": False, "acuity": 3, "required_ward": "ICU"},
+            f"E{i + 1}": {
+                "is_casualty": False,
+                "acuity": acuity,
+                "required_ward": ward,
+            }
+            for i, (ward, acuity) in enumerate(existing_configs)
         }
 
-        # Incoming casualties: injury_score drives ground-truth triage.
+        # Casualties: guarantee a mix of red/yellow/green (2 each).
+        # Injury scores: red ≥ 8, yellow 5–7, green 1–4.
+        categories = ["red"] * 2 + ["yellow"] * 2 + ["green"] * 2
+        rng.shuffle(categories)
+        injury_ranges = {"red": (8, 10), "yellow": (5, 7), "green": (1, 4)}
+        symptoms_shuffled = _SYMPTOMS[:]
+        rng.shuffle(symptoms_shuffled)
+
         casualties = {
-            "C1": {"is_casualty": True, "injury_score": 9, "symptoms": "unconscious, low BP"},
-            "C2": {"is_casualty": True, "injury_score": 7, "symptoms": "fracture, bleeding controlled"},
-            "C3": {"is_casualty": True, "injury_score": 5, "symptoms": "chest pain, stable vitals"},
-            "C4": {"is_casualty": True, "injury_score": 4, "symptoms": "minor lacerations"},
-            "C5": {"is_casualty": True, "injury_score": 8, "symptoms": "respiratory distress"},
-            "C6": {"is_casualty": True, "injury_score": 6, "symptoms": "burns, moderate pain"},
+            f"C{i + 1}": {
+                "is_casualty": True,
+                "injury_score": rng.randint(*injury_ranges[cat]),
+                "symptoms": symptoms_shuffled[i % len(symptoms_shuffled)],
+            }
+            for i, cat in enumerate(categories)
         }
 
         state.patients = {**existing, **casualties}
 
-        # Start occupancy
+        # Fixed starting bed occupancy (existing patients already placed).
         state.bed_assignments = {
             "E1": "G1",
             "E2": "G2",
@@ -237,7 +293,7 @@ class HospitalSchedulerEnvironment(Environment):
             "E4": "ICU2",
         }
 
-        # Nurses: 1 on-duty per ward + 3 on-call.
+        # 3 on-duty nurses (one per ward) + 3 on-call.
         state.nurses = {
             "D1": {"name": "Day Nurse 1"},
             "D2": {"name": "Day Nurse 2"},
@@ -248,7 +304,6 @@ class HospitalSchedulerEnvironment(Environment):
         }
         state.available_nurses = ["D1", "D2", "D3"]
         state.on_call_nurses = ["OC1", "OC2", "OC3"]
-
         state.nurse_ward_assignments = {
             "D1": "ED",
             "D2": "ICU",
@@ -315,7 +370,6 @@ class HospitalSchedulerEnvironment(Environment):
             day_map = self._state.shift_assignments.setdefault(day_key, {})
             day_map.setdefault(ward_id, [])
 
-            # Enforce: a nurse can only be assigned to one ward per day.
             for w, ns in day_map.items():
                 if nurse_id in ns and w != ward_id:
                     violations.append("Nurse already assigned on this day")
@@ -374,10 +428,8 @@ class HospitalSchedulerEnvironment(Environment):
                 return "Invalid discharge", ["Unknown patient_id"]
             if self._state.patients[patient_id].get("is_casualty", False):
                 return "Invalid discharge", ["Cannot discharge casualty"]
-            # Allow discharge only for low acuity (<=2)
             if float(self._state.patients[patient_id].get("acuity", 99)) > 2:
                 return "Invalid discharge", ["Patient too high acuity to discharge"]
-
             self._state.bed_assignments.pop(patient_id, None)
             self._state.patients[patient_id]["discharged"] = True
             return f"Discharged {patient_id}", []
@@ -425,6 +477,7 @@ class HospitalSchedulerEnvironment(Environment):
             reward=reward,
             metadata={
                 "episode_id": self._state.episode_id,
+                "seed": self._state.seed,
                 "step": self._state.step_count,
                 "score": float(self._state.score),
                 "last_action_error": self._state.last_action_error,
@@ -432,7 +485,6 @@ class HospitalSchedulerEnvironment(Environment):
         )
 
     def _snapshot(self) -> dict:
-        # Keep snapshots concise and task-focused.
         if self._state.task == "easy":
             return {
                 "patients": self._state.patients,
@@ -452,7 +504,6 @@ class HospitalSchedulerEnvironment(Environment):
                 },
             }
 
-        # hard
         casualty = {
             pid: p
             for pid, p in self._state.patients.items()

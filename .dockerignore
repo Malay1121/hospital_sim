@@ -1,0 +1,29 @@
+# Virtual environments - platform-specific, must not be copied into Linux image
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# uv cache
+.uv/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Dev/test files not needed in the image
+test_inference.py
+smoke_test.py
+client_demo.py
+*.md
+
+# IDE
+.vscode/
+.idea/

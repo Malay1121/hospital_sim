@@ -58,6 +58,7 @@ class HospitalState(State):
     """Serializable environment state (queried via the /state endpoint)."""
 
     task: str = Field(default="easy", description="Active task name")
+    seed: Optional[int] = Field(default=None, description="Random seed used for this episode (None = random)")
     max_steps: int = Field(default=60, description="Episode step limit")
     score: float = Field(default=0.0, ge=0.0, le=1.0, description="Current score")
     last_action_error: Optional[str] = Field(
