@@ -4,13 +4,15 @@
 # This source code is licensed under the BSD-style license found in the
 # LICENSE file in the root directory of this source tree.
 
-"""My Env Environment."""
+"""Hospital Scheduler Environment."""
 
-from ..client import MyEnv
-from ..models import MyAction, MyObservation
+from .client import HospitalSchedulerEnv, HospitalSchedulerSync
+from .models import HospitalAction, HospitalObservation, HospitalState
 
 __all__ = [
-    "MyAction",
-    "MyObservation",
-    "MyEnv",
+    "HospitalAction",
+    "HospitalObservation",
+    "HospitalState",
+    "HospitalSchedulerEnv",
+    "HospitalSchedulerSync",
 ]
