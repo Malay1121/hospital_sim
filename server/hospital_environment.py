@@ -56,6 +56,7 @@ class HospitalSchedulerEnvironment(Environment):
         self._state = self._build_state(
             task=os.getenv("HOSPITAL_TASK", "easy"), seed=None
         )
+        self._state.score = grade(self._state)
 
     def reset(self, seed=None, episode_id=None, **kwargs) -> HospitalObservation:
         task = os.getenv("HOSPITAL_TASK", self._state.task)

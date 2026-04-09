@@ -14,16 +14,18 @@ from typing import Dict, Iterable, List, Set
 
 try:
     from .models import HospitalState
-except ImportError:  # When running from source
+except ImportError:  # When running as source
     from models import HospitalState
+
+_EPS = 1e-9  # Scores must be strictly in (0, 1)
 
 
 def _clamp01(x: float) -> float:
-    return 0.0 if x < 0.0 else 1.0 if x > 1.0 else x
+    return _EPS if x <= 0.0 else (1.0 - _EPS) if x >= 1.0 else x
 
 
 def grade(state: HospitalState) -> float:
-    """Grade the current episode state, returning a score in [0, 1]."""
+    """Grade the current episode state, returning a score in (0, 1)."""
 
     if state.task == "easy":
         return grade_easy_beds(state)
@@ -31,7 +33,7 @@ def grade(state: HospitalState) -> float:
         return grade_medium_staffing(state)
     if state.task == "hard":
         return grade_hard_mass_casualty(state)
-    return 0.0
+    return _EPS
 
 
 def grade_easy_beds(state: HospitalState) -> float:
@@ -40,7 +42,7 @@ def grade_easy_beds(state: HospitalState) -> float:
     assignments = state.bed_assignments
 
     if not patients:
-        return 0.0
+        return _EPS
 
     # Bed usage conflicts
     bed_to_patients: Dict[str, List[str]] = {}
@@ -101,7 +103,7 @@ def grade_medium_staffing(state: HospitalState) -> float:
 
     ward_ids = list(wards.keys())
     if not ward_ids:
-        return 0.0
+        return _EPS
 
     total_demand = 0
     filled = 0
@@ -145,7 +147,7 @@ def grade_medium_staffing(state: HospitalState) -> float:
                 multi_ward_same_day += 1
 
     if total_demand == 0:
-        return 0.0
+        return _EPS
 
     coverage = filled / total_demand
 
@@ -184,7 +186,7 @@ def grade_hard_mass_casualty(state: HospitalState) -> float:
         pid for pid, p in patients.items() if bool(p.get("is_casualty", False))
     ]
     if not casualty_ids:
-        return 0.0
+        return _EPS
 
     # Ground truth triage from injury_score
     def truth(pid: str) -> str:
