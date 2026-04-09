@@ -120,7 +120,7 @@ class HospitalSchedulerEnvironment(Environment):
         done = False
         if cmd == "finalize":
             done = True
-        elif self._state.score >= 0.999:
+        elif self._state.score >= 0.98:
             done = True
         elif self._state.step_count >= self._state.max_steps:
             done = True
@@ -156,7 +156,7 @@ class HospitalSchedulerEnvironment(Environment):
             task=task,
             seed=resolved_seed,
             max_steps={"easy": 40, "medium": 80, "hard": 120}[task],
-            score=0.0,
+            score=0.02,
             last_action_error=None,
         )
 

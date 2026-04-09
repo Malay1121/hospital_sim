@@ -88,7 +88,7 @@ Every step returns a `HospitalObservation`:
 |-------|------|-------------|
 | `message` | `str` | Human-readable result of the last action |
 | `task` | `str` | Active task (`easy` / `medium` / `hard`) |
-| `progress` | `float [0,1]` | Current task score |
+| `progress` | `float [0.02, 0.98]` | Current task score |
 | `violations` | `list[str]` | Rule violations from the last action |
 | `snapshot` | `dict` | Task-focused state view for the agent |
 | `done` | `bool` | Whether the episode has ended |
@@ -109,7 +109,7 @@ reward = (new_score - old_score) - 0.01
 - **Time penalty (`-0.01`)** — charges a small cost on every step. Without it, an agent could take arbitrary useless actions and receive the same total reward as a fast, efficient agent. The penalty forces the agent to solve the task in as few steps as possible.
 - **Dense signal** — reward is non-zero at every step (not just at episode end), which gives the agent a learning signal throughout the trajectory rather than only at the final outcome.
 
-Episode ends automatically when `score >= 0.999`, `finalize` is called, or max steps is reached.
+Episode ends automatically when `score >= 0.98`, `finalize` is called, or max steps is reached.
 
 ### Grader details
 
@@ -134,8 +134,8 @@ Scores produced by the deterministic heuristic agent in `inference.py` (no LLM r
 
 | Task | Score | Steps | Seed |
 |------|-------|-------|------|
-| `easy` | **1.00** | 10 | 42 |
-| `medium` | **1.00** | 28 | 42 |
+| `easy` | **0.98** | 10 | 42 |
+| `medium` | **0.98** | 28 | 42 |
 | `hard` | **0.98** | ~15 | 42 |
 
 ---

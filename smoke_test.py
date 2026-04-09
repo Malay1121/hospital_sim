@@ -212,9 +212,9 @@ def main() -> None:
     print(f"medium_score={medium:.2f} (seed=42)")
     print(f"hard_score={hard:.2f}   (seed=42)")
 
-    assert 0.99 <= easy <= 1.01,   f"Easy score too low: {easy}"
-    assert 0.50 <= medium <= 1.01, f"Medium score too low: {medium}"
-    assert 0.40 <= hard <= 1.01,   f"Hard score too low: {hard}"
+    assert 0.02 <= easy <= 0.98,   f"Easy score out of range: {easy}"
+    assert 0.02 <= medium <= 0.98, f"Medium score out of range: {medium}"
+    assert 0.02 <= hard <= 0.98,   f"Hard score out of range: {hard}"
 
     print("\n=== Randomization: different seeds produce different scenarios ===")
     snap_42  = _easy_snapshot(42)

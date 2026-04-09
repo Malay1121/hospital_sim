@@ -39,10 +39,10 @@ class HospitalObservation(Observation):
     message: str = Field(default="", description="Human-readable result message")
     task: str = Field(default="easy", description="Active task name")
     progress: float = Field(
-        default=0.0,
-        ge=0.0,
-        le=1.0,
-        description="Current task score/progress in [0, 1]",
+        default=0.02,
+        ge=0.02,
+        le=0.98,
+        description="Current task score/progress in [0.02, 0.98]",
     )
     violations: List[str] = Field(
         default_factory=list,
@@ -60,7 +60,7 @@ class HospitalState(State):
     task: str = Field(default="easy", description="Active task name")
     seed: Optional[int] = Field(default=None, description="Random seed used for this episode (None = random)")
     max_steps: int = Field(default=60, description="Episode step limit")
-    score: float = Field(default=0.0, ge=0.0, le=1.0, description="Current score")
+    score: float = Field(default=0.02, ge=0.02, le=0.98, description="Current score in [0.02, 0.98]")
     last_action_error: Optional[str] = Field(
         default=None,
         description="Last action error message (or null)",

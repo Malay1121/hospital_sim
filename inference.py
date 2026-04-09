@@ -289,7 +289,7 @@ async def _run_task(task: str, server_url: Optional[str] = None) -> Tuple[bool, 
     rewards: List[float] = []
     steps = 0
     success = False
-    score = 0.0
+    score = 0.02
 
     print(f"[START] task={task} env={BENCHMARK} model={MODEL_NAME}", flush=True)
 
@@ -333,13 +333,13 @@ async def _run_task(task: str, server_url: Optional[str] = None) -> Tuple[bool, 
                 break
 
         st = await env.state()
-        score = float(getattr(st, "score", 0.0) or 0.0)
-        success = score >= 0.999
+        score = float(getattr(st, "score", 0.02) or 0.02)
+        success = score >= 0.98
 
     except Exception as exc:
         # If something goes wrong, we still must emit [END].
         print(f"[DEBUG] Task {task} failed: {exc}", flush=True)
-        score = 0.0
+        score = 0.02
         success = False
     finally:
         try:

@@ -2,7 +2,7 @@
 
 These graders are used for:
 - Reward shaping (dense progress signals)
-- Final episode scoring (0.0–1.0)
+- Final episode scoring (0.02–0.98)
 
 They are intentionally deterministic and rely only on the environment state.
 """
@@ -17,15 +17,21 @@ try:
 except ImportError:  # When running as source
     from models import HospitalState
 
-_EPS = 1e-9  # Scores must be strictly in (0, 1)
+_SCORE_MIN = 0.02  # Scores are clamped to [0.02, 0.98]
+_SCORE_MAX = 0.98
 
 
-def _clamp01(x: float) -> float:
-    return _EPS if x <= 0.0 else (1.0 - _EPS) if x >= 1.0 else x
+def _clamp_score(x: float) -> float:
+    """Clamp a raw score into the safe range [0.02, 0.98]."""
+    if x <= 0.0:
+        return _SCORE_MIN
+    if x >= 1.0:
+        return _SCORE_MAX
+    return max(_SCORE_MIN, min(_SCORE_MAX, x))
 
 
 def grade(state: HospitalState) -> float:
-    """Grade the current episode state, returning a score in (0, 1)."""
+    """Grade the current episode state, returning a score in [0.02, 0.98]."""
 
     if state.task == "easy":
         return grade_easy_beds(state)
@@ -33,7 +39,7 @@ def grade(state: HospitalState) -> float:
         return grade_medium_staffing(state)
     if state.task == "hard":
         return grade_hard_mass_casualty(state)
-    return _EPS
+    return _SCORE_MIN
 
 
 def grade_easy_beds(state: HospitalState) -> float:
@@ -42,7 +48,7 @@ def grade_easy_beds(state: HospitalState) -> float:
     assignments = state.bed_assignments
 
     if not patients:
-        return _EPS
+        return _SCORE_MIN
 
     # Bed usage conflicts
     bed_to_patients: Dict[str, List[str]] = {}
@@ -88,7 +94,7 @@ def grade_easy_beds(state: HospitalState) -> float:
             wrong_or_conflict += 1
 
     penalty = 0.02 * wrong_or_conflict
-    return _clamp01(score - penalty)
+    return _clamp_score(score - penalty)
 
 
 def grade_medium_staffing(state: HospitalState) -> float:
@@ -103,7 +109,7 @@ def grade_medium_staffing(state: HospitalState) -> float:
 
     ward_ids = list(wards.keys())
     if not ward_ids:
-        return _EPS
+        return _SCORE_MIN
 
     total_demand = 0
     filled = 0
@@ -147,7 +153,7 @@ def grade_medium_staffing(state: HospitalState) -> float:
                 multi_ward_same_day += 1
 
     if total_demand == 0:
-        return _EPS
+        return _SCORE_MIN
 
     coverage = filled / total_demand
 
@@ -172,7 +178,7 @@ def grade_medium_staffing(state: HospitalState) -> float:
                 else:
                     streak = 1
 
-    return _clamp01(coverage - penalty)
+    return _clamp_score(coverage - penalty)
 
 
 def grade_hard_mass_casualty(state: HospitalState) -> float:
@@ -186,7 +192,7 @@ def grade_hard_mass_casualty(state: HospitalState) -> float:
         pid for pid, p in patients.items() if bool(p.get("is_casualty", False))
     ]
     if not casualty_ids:
-        return _EPS
+        return _SCORE_MIN
 
     # Ground truth triage from injury_score
     def truth(pid: str) -> str:
@@ -273,4 +279,4 @@ def grade_hard_mass_casualty(state: HospitalState) -> float:
 
     staffing_score = sum(adequacies) / len(adequacies) if adequacies else 0.0
 
-    return _clamp01(0.4 * triage_score + 0.4 * bed_score + 0.2 * staffing_score)
+    return _clamp_score(0.4 * triage_score + 0.4 * bed_score + 0.2 * staffing_score)
